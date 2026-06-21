@@ -1,0 +1,6 @@
+{
+  "name": "Thermal Overlay",
+  "description": "A high-precision real-time CPU & GPU temperature tracker that hovers visually over other applications. Integrates with native Linux thermal zones and features a Shizuku mode for elevated access permissions.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
