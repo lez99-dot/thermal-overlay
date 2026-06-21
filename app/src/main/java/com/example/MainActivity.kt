@@ -50,6 +50,8 @@ import com.example.thermal.ThermalViewModel
 import com.example.thermal.ThermalZoneInfo
 import com.example.ui.theme.MyApplicationTheme
 import rikka.shizuku.Shizuku
+import com.example.thermal.CrashReporter
+import androidx.compose.foundation.text.selection.SelectionContainer
 
 class MainActivity : ComponentActivity() {
 
@@ -1523,6 +1525,166 @@ fun DiagnosticsTab(
                         ) {
                             Text(cat, color = textCol, fontSize = 10.sp, fontWeight = FontWeight.Black)
                         }
+                    }
+                }
+            }
+        }
+
+        Spacer(modifier = Modifier.height(16.dp))
+
+        // Crash Logging diagnostics mapping
+        var directoryStatus by remember { mutableStateOf(CrashReporter.checkDirectoryStatus()) }
+        var statusMessage by remember { mutableStateOf<String?>(null) }
+        val context = LocalContext.current
+
+        Card(
+            colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+            shape = RoundedCornerShape(24.dp),
+            border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
+            modifier = Modifier.fillMaxWidth().padding(bottom = 16.dp)
+        ) {
+            Column(modifier = Modifier.padding(20.dp)) {
+                Text(
+                    text = "External Crash Logging",
+                    color = MaterialTheme.colorScheme.onSurface,
+                    fontSize = 16.sp,
+                    fontWeight = FontWeight.Bold
+                )
+                Text(
+                    text = "Configure and verify uncaught exception reporting",
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    fontSize = 12.sp
+                )
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "Log Directory",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 11.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = directoryStatus.path,
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 13.sp,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
+                    
+                    IconButton(
+                        onClick = {
+                            directoryStatus = CrashReporter.checkDirectoryStatus()
+                        },
+                        modifier = Modifier.size(36.dp).background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.3f), CircleShape)
+                    ) {
+                        Icon(
+                            imageVector = Icons.Default.Refresh,
+                            contentDescription = "Refresh Status",
+                            tint = MaterialTheme.colorScheme.primary,
+                            modifier = Modifier.size(18.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(12.dp))
+
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    modifier = Modifier
+                        .background(
+                            if (directoryStatus.writable) Color(0xFF1E3A20) else Color(0xFF3D211A),
+                            RoundedCornerShape(8.dp)
+                        )
+                        .padding(horizontal = 12.dp, vertical = 6.dp)
+                ) {
+                    Box(
+                        modifier = Modifier
+                            .size(8.dp)
+                            .background(
+                                if (directoryStatus.writable) Color(0xFF4CAF50) else Color(0xFFFF5E3A),
+                                CircleShape
+                            )
+                    )
+                    Spacer(modifier = Modifier.width(8.dp))
+                    Text(
+                        text = if (directoryStatus.writable) {
+                            "WRITABLE (Directory Active)"
+                        } else {
+                            "READ-ONLY (Fallback Enabled)"
+                        },
+                        color = if (directoryStatus.writable) Color(0xFF81C784) else Color(0xFFFF8A65),
+                        fontSize = 11.sp,
+                        fontWeight = FontWeight.Bold
+                    )
+                }
+
+                if (!directoryStatus.writable) {
+                    Spacer(modifier = Modifier.height(8.dp))
+                    Text(
+                        text = "Android restriction: modern system isolation is in effect. Handled exception details will gracefully save to internal fallback paths too.",
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                        fontSize = 10.sp,
+                        style = MaterialTheme.typography.bodySmall
+                    )
+                }
+
+                statusMessage?.let { msg ->
+                    Spacer(modifier = Modifier.height(12.dp))
+                    SelectionContainer {
+                        Text(
+                            text = msg,
+                            color = MaterialTheme.colorScheme.primary,
+                            fontSize = 11.sp,
+                            fontFamily = FontFamily.Monospace,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .background(MaterialTheme.colorScheme.secondary.copy(alpha = 0.2f), RoundedCornerShape(8.dp))
+                                .padding(8.dp)
+                        )
+                    }
+                }
+
+                Spacer(modifier = Modifier.height(16.dp))
+
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(8.dp)
+                ) {
+                    Button(
+                        onClick = {
+                            val path = CrashReporter.writeTestLog(context)
+                            directoryStatus = CrashReporter.checkDirectoryStatus()
+                            statusMessage = "Test Log written to:\n$path"
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = MaterialTheme.colorScheme.secondary,
+                            contentColor = MaterialTheme.colorScheme.onSurface
+                        ),
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("WRITE TEST LOG", fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                    }
+
+                    Button(
+                        onClick = {
+                            throw RuntimeException("User-triggered simulated crash in Thermal Overlay")
+                        },
+                        colors = ButtonDefaults.buttonColors(
+                            containerColor = Color(0xFFB3261E),
+                            contentColor = Color.White
+                        ),
+                        modifier = Modifier.weight(1f),
+                        shape = RoundedCornerShape(12.dp)
+                    ) {
+                        Text("SIMULATE CRASH", fontSize = 11.sp, fontWeight = FontWeight.Bold)
                     }
                 }
             }
