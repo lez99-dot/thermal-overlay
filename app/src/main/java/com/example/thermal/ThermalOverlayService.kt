@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationCompat
 import androidx.lifecycle.*
+import androidx.lifecycle.setViewTreeViewModelStoreOwner
 import androidx.savedstate.setViewTreeSavedStateRegistryOwner
 import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryOwner
@@ -39,7 +40,11 @@ import com.example.MainActivity
 import com.example.data.ThermalDatabase
 import kotlinx.coroutines.*
 
-class ThermalOverlayService : Service() {
+class ThermalOverlayService : Service(), ViewModelStoreOwner {
+
+    private val store = ViewModelStore()
+    override val viewModelStore: ViewModelStore
+        get() = store
 
     private var windowManager: WindowManager? = null
     private var overlayView: FrameLayout? = null
@@ -95,10 +100,36 @@ class ThermalOverlayService : Service() {
     override fun onCreate() {
         super.onCreate()
         thermalManager = ThermalManager(this)
-        createNotificationChannel()
-        startForeground(NOTIFICATION_ID, buildNotification())
+        startForegroundCompat()
         
         loadSettingsAndStart()
+    }
+
+    private fun startForegroundCompat() {
+        createNotificationChannel()
+        val notification = buildNotification()
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+            if (Build.VERSION.SDK_INT >= 34) {
+                try {
+                    startForeground(
+                        NOTIFICATION_ID,
+                        notification,
+                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                    )
+                } catch (e: Exception) {
+                    Log.e("ThermalOverlayService", "Failed to start foreground with TYPE_SPECIAL_USE, attempting fallback", e)
+                    startForeground(NOTIFICATION_ID, notification)
+                }
+            } else {
+                startForeground(
+                    NOTIFICATION_ID,
+                    notification,
+                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_NONE
+                )
+            }
+        } else {
+            startForeground(NOTIFICATION_ID, notification)
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -200,6 +231,7 @@ class ThermalOverlayService : Service() {
         composeView = ComposeView(this).apply {
             setViewTreeLifecycleOwner(lifecycleOwner)
             setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+            setViewTreeViewModelStoreOwner(this@ThermalOverlayService)
             
             setContent {
                 val cpuTemp by cpuTempState
@@ -245,6 +277,7 @@ class ThermalOverlayService : Service() {
         serviceJob.cancel()
         
         lifecycleOwner.stop()
+        store.clear()
         
         try {
             if (overlayView != null) {
