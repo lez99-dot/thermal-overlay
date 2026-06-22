@@ -31,10 +31,77 @@ class MainActivity : ComponentActivity() {
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
         if (isGranted) {
-            viewModel.loadZones()
+            viewModel.loadZones()  // Ensure this method exists in ThermalViewModel
         }
     }
 
+    override fun onCreate(savedInstanceState: Bundle?) {
+        Thread.setDefaultUncaughtExceptionHandler { _, throwable ->
+            val logFile = File(getExternalFilesDir(null), "error_log.txt")
+            logFile.appendText("\n--- CRASH AT ${System.currentTimeMillis()} ---\n")
+            logFile.appendText(throwable.stackTraceToString())
+            System.exit(2)
+        }
+
+        super.onCreate(savedInstanceState)
+
+        setContent {
+            MyApplicationTheme {
+                Surface(
+                    modifier = Modifier.fillMaxSize(),
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    DashboardScreen(
+                        viewModel = viewModel,
+                        onRequestOverlayPermission = { requestOverlayPermission() },
+                        onRequestShizukuPermission = { requestShizukuPermission() },
+                        onRequestWinlatorPermission = { requestWinlatorPermission() }
+                    )
+                }
+            }
+        }
+    }
+
+    fun requestOverlayPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val intent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:$packageName")
+            )
+            overlayPermissionLauncher.launch(intent)
+        }
+    }
+
+    fun requestWinlatorPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            winlatorPermissionLauncher.launch("com.winlator.permission.READ_THERMAL_DATA")
+        }
+    }
+
+    fun requestShizukuPermission() {
+        // Add implementation for Shizuku permission request
+    }
+
+    override fun onResume() {
+        super.onResume()
+        viewModel.checkOverlayPermission()
+        viewModel.checkShizukuStatus()
+        viewModel.checkWinlatorStatus()
+        viewModel.refreshZones()
+    }
+
+    override fun onDestroy() {
+        super.onDestroy()
+        // Clean up listeners if needed
+    }
+}
+
+// All composables and other functions continue below...
+@Composable
+fun DashboardScreen(
+    // ... rest of your composable code
+)
+// ... rest of file
     override fun onCreate(savedInstanceState: Bundle?) {
         Thread.setDefaultUncaughtExceptionHandler { _, throwable ->
             val logFile = File(getExternalFilesDir(null), "error_log.txt")
