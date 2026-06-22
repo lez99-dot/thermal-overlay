@@ -7,51 +7,15 @@ import android.os.Bundle
 import android.provider.Settings
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
-import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.viewModels
-import androidx.compose.animation.*
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.BorderStroke
-import androidx.compose.foundation.Canvas
-import androidx.compose.foundation.background
-import androidx.compose.foundation.border
-import androidx.compose.foundation.clickable
-import com.example.thermal.parseHexColor
-import androidx.compose.foundation.layout.*
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.LazyRow
-import androidx.compose.foundation.lazy.items
-import androidx.compose.foundation.shape.CircleShape
-import androidx.compose.foundation.shape.RoundedCornerShape
-import androidx.compose.material.icons.Icons
-import androidx.compose.material.icons.filled.*
-import androidx.compose.material3.*
-import androidx.compose.runtime.*
-import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
-import androidx.compose.ui.graphics.Brush
-import androidx.compose.ui.graphics.Color
-import androidx.compose.ui.graphics.Path
-import androidx.compose.ui.graphics.StrokeCap
-import androidx.compose.ui.graphics.drawscope.Stroke
-import androidx.compose.ui.platform.LocalContext
-import androidx.compose.ui.semantics.contentDescription
-import androidx.compose.ui.semantics.semantics
-import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.TextAlign
-import androidx.compose.ui.unit.dp
-import androidx.compose.ui.unit.sp
-import com.example.data.ThermalReading
 import com.example.thermal.ThermalViewModel
-import com.example.thermal.ThermalZoneInfo
 import com.example.ui.theme.MyApplicationTheme
-import rikka.shizuku.Shizuku
-import com.example.thermal.CrashReporter
-import androidx.compose.foundation.text.selection.SelectionContainer
+import java.io.File
 
 class MainActivity : ComponentActivity() {
 
@@ -66,34 +30,50 @@ class MainActivity : ComponentActivity() {
     private val winlatorPermissionLauncher = registerForActivityResult(
         ActivityResultContracts.RequestPermission()
     ) { isGranted ->
-        viewModel.setWinlatorPermissionGranted(isGranted)
-    }
-
-    private val shizukuPermissionListener = Shizuku.OnRequestPermissionResultListener { _, _ ->
-        viewModel.checkShizukuStatus()
-        viewModel.refreshZones()
+        if (isGranted) {
+            viewModel.loadZones()
+        }
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
-        super.onCreate(savedInstanceState)
-        enableEdgeToEdge()
-
-        try {
-            Shizuku.addRequestPermissionResultListener(shizukuPermissionListener)
-        } catch (e: Exception) {
-            e.printStackTrace()
+        Thread.setDefaultUncaughtExceptionHandler { _, throwable ->
+            val logFile = File(getExternalFilesDir(null), "error_log.txt")
+            logFile.appendText("\n--- CRASH AT ${System.currentTimeMillis()} ---\n")
+            logFile.appendText(throwable.stackTraceToString())
+            System.exit(2)
         }
+
+        super.onCreate(savedInstanceState)
 
         setContent {
             MyApplicationTheme {
-                Scaffold(
+                Surface(
                     modifier = Modifier.fillMaxSize(),
-                    containerColor = MaterialTheme.colorScheme.background
-                ) { innerPadding ->
-                    DashboardScreen(
-                        viewModel = viewModel,
-                        onRequestOverlayPermission = {
-                            val intent = Intent(
+                    color = MaterialTheme.colorScheme.background
+                ) {
+                    // Call your main UI composable here
+                    // e.g., ThermalAppScreen(viewModel = viewModel)
+                }
+            }
+        }
+    }
+
+    fun requestOverlayPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            val intent = Intent(
+                Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
+                Uri.parse("package:$packageName")
+            )
+            overlayPermissionLauncher.launch(intent)
+        }
+    }
+
+    fun requestWinlatorPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+            winlatorPermissionLauncher.launch("com.winlator.permission.READ_THERMAL_DATA")
+        }
+    }
+}
                                 Settings.ACTION_MANAGE_OVERLAY_PERMISSION,
                                 Uri.parse("package:$packageName")
                             )
