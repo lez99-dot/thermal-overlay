@@ -117,7 +117,6 @@ class ThermalOverlayService : Service(), ViewModelStoreOwner {
                         android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
                     )
                 } catch (e: Exception) {
-                    Log.e("ThermalOverlayService", "Failed to start foreground with TYPE_SPECIAL_USE, attempting fallback", e)
                     startForeground(NOTIFICATION_ID, notification)
                 }
             } else {
@@ -213,17 +212,8 @@ class ThermalOverlayService : Service(), ViewModelStoreOwner {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            
-            val db = ThermalDatabase.getInstance(this@ThermalOverlayService)
-            serviceScope.launch {
-                val lastX = withContext(Dispatchers.IO) { db.dao().getConfig("overlay_x")?.value?.toIntOrNull() } ?: 100
-                val lastY = withContext(Dispatchers.IO) { db.dao().getConfig("overlay_y")?.value?.toIntOrNull() } ?: 200
-                x = lastX
-                y = lastY
-                try {
-                    windowManager?.updateViewLayout(overlayView, this@apply)
-                } catch (e: Exception) {}
-            }
+            x = 100
+            y = 200
         }
 
         overlayView = FrameLayout(this)
@@ -265,6 +255,15 @@ class ThermalOverlayService : Service(), ViewModelStoreOwner {
         try {
             lifecycleOwner.start()
             windowManager?.addView(overlayView, layoutParams)
+            
+            serviceScope.launch {
+                val db = ThermalDatabase.getInstance(this@ThermalOverlayService)
+                val lastX = withContext(Dispatchers.IO) { db.dao().getConfig("overlay_x")?.value?.toIntOrNull() } ?: 100
+                val lastY = withContext(Dispatchers.IO) { db.dao().getConfig("overlay_y")?.value?.toIntOrNull() } ?: 200
+                layoutParams.x = lastX
+                layoutParams.y = lastY
+                windowManager?.updateViewLayout(overlayView, layoutParams)
+            }
         } catch (e: Exception) {
             e.printStackTrace()
             Log.e("ThermalOverlayService", "Failed to add system overlay view.", e)
