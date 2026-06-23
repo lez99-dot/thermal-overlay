@@ -37,16 +37,16 @@ class ThermalManager(private val context: Context) {
     }
 
     fun getCpuName(): String {
+        var socModel: String? = null
+        var socManufacturer: String? = null
+        
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
-            val socModel = Build.SOC_MODEL
-            val socManufacturer = Build.SOC_MANUFACTURER
-            if (socModel != null && socModel != "unknown" && socModel.isNotEmpty()) {
-                if (socManufacturer != null && socManufacturer != "unknown" && socManufacturer.isNotEmpty()) {
-                    return "$socManufacturer $socModel"
-                }
-                return socModel
-            }
+            socModel = Build.SOC_MODEL
+            socManufacturer = Build.SOC_MANUFACTURER
         }
+        
+        var procHardware: String? = null
+        var procModelName: String? = null
         
         try {
             val cpuInfoFile = File("/proc/cpuinfo")
@@ -58,7 +58,7 @@ class ThermalManager(private val context: Context) {
                         if (parts.size > 1) {
                             val hw = parts[1].trim()
                             if (hw.isNotEmpty() && hw != "unknown") {
-                                return hw
+                                procHardware = hw
                             }
                         }
                     }
@@ -69,7 +69,7 @@ class ThermalManager(private val context: Context) {
                         if (parts.size > 1) {
                             val proc = parts[1].trim()
                             if (proc.isNotEmpty() && proc != "unknown" && !proc.contains("Processor")) {
-                                return proc
+                                procModelName = proc
                             }
                         }
                     }
@@ -78,13 +78,157 @@ class ThermalManager(private val context: Context) {
         } catch (e: Exception) {
             Log.e("ThermalManager", "Failed to parse /proc/cpuinfo for CPU name", e)
         }
-        
-        val board = Build.BOARD
-        val hardware = Build.HARDWARE
-        if (hardware != null && hardware != "unknown" && hardware.isNotEmpty()) {
-            return hardware
+
+        return mapToMarketingName(
+            manufacturer = socManufacturer,
+            model = socModel ?: procModelName,
+            hardware = procHardware ?: Build.HARDWARE,
+            board = Build.BOARD
+        )
+    }
+
+    private fun mapToMarketingName(manufacturer: String?, model: String?, hardware: String?, board: String?): String {
+        val mfg = manufacturer?.lowercase() ?: ""
+        val mdl = model?.lowercase() ?: ""
+        val hw = hardware?.lowercase() ?: ""
+        val brd = board?.lowercase() ?: ""
+
+        // 1. Explicit popular models mapping
+        val candidates = listOf(mdl, hw, brd)
+        for (c in candidates) {
+            if (c.isEmpty()) continue
+            
+            // Qualcomm Snapdragon 8 series
+            if (c == "sm8650" || c.contains("sm8650")) return "Snapdragon 8 Gen 3"
+            if (c == "sm8550" || c.contains("sm8550")) return "Snapdragon 8 Gen 2"
+            if (c == "sm8475" || c.contains("sm8475")) return "Snapdragon 8+ Gen 1"
+            if (c == "sm8450" || c.contains("sm8450")) return "Snapdragon 8 Gen 1"
+            if (c == "sm8350" || c.contains("sm8350")) return "Snapdragon 888"
+            if (c == "sm8250" || c.contains("sm8250")) return "Snapdragon 865"
+            if (c == "sm8150" || c.contains("sm8150")) return "Snapdragon 855"
+            if (c == "sdm845" || c.contains("sdm845")) return "Snapdragon 845"
+            if (c == "msm8998" || c.contains("msm8998")) return "Snapdragon 835"
+            if (c == "msm8996" || c.contains("msm8996")) return "Snapdragon 820"
+            
+            // Qualcomm Snapdragon 7 series
+            if (c == "sm7675" || c.contains("sm7675")) return "Snapdragon 7+ Gen 3"
+            if (c == "sm7550" || c.contains("sm7550")) return "Snapdragon 7 Gen 3"
+            if (c == "sm7475" || c.contains("sm7475")) return "Snapdragon 7+ Gen 2"
+            if (c == "sm7450" || c.contains("sm7450")) return "Snapdragon 7 Gen 1"
+            if (c == "sm7325" || c.contains("sm7325")) return "Snapdragon 778G"
+            if (c == "sm7250" || c.contains("sm7250")) return "Snapdragon 765G"
+            if (c == "sm7150" || c.contains("sm7150")) return "Snapdragon 730G"
+            
+            // Qualcomm Snapdragon 6 series
+            if (c == "sm6450" || c.contains("sm6450")) return "Snapdragon 6 Gen 1"
+            if (c == "sm6375" || c.contains("sm6375")) return "Snapdragon 695"
+            if (c == "sm6225" || c.contains("sm6225")) return "Snapdragon 680"
+            if (c == "sm6125" || c.contains("sm6125")) return "Snapdragon 665"
+            if (c == "sm6115" || c.contains("sm6115")) return "Snapdragon 662"
+            if (c == "sdm660" || c.contains("sdm660")) return "Snapdragon 660"
+
+            // Qualcomm Snapdragon 4 series
+            if (c == "sm4450" || c.contains("sm4450")) return "Snapdragon 4 Gen 2"
+            if (c == "sm4375" || c.contains("sm4375")) return "Snapdragon 4 Gen 1"
+            if (c == "sm4350" || c.contains("sm4350")) return "Snapdragon 480"
+
+            // MediaTek Dimensity
+            if (c == "mt6989" || c.contains("mt6989")) return "Dimensity 9300"
+            if (c == "mt6985" || c.contains("mt6985")) return "Dimensity 9200"
+            if (c == "mt6983" || c.contains("mt6983")) return "Dimensity 9000"
+            if (c == "mt6897" || c.contains("mt6897")) return "Dimensity 8200"
+            if (c == "mt6895" || c.contains("mt6895")) return "Dimensity 8100"
+            if (c == "mt6893" || c.contains("mt6893")) return "Dimensity 1200"
+            if (c == "mt6889" || c.contains("mt6889")) return "Dimensity 1000+"
+            if (c == "mt6886" || c.contains("mt6886")) return "Dimensity 7200"
+            if (c == "mt6877" || c.contains("mt6877")) return "Dimensity 1080"
+            if (c == "mt6855" || c.contains("mt6855")) return "Dimensity 930"
+            if (c == "mt6853" || c.contains("mt6853")) return "Dimensity 720"
+            if (c == "mt6833" || c.contains("mt6833")) return "Dimensity 700"
+            if (c == "mt6789" || c.contains("mt6789")) return "Helio G99"
+            if (c == "mt6785" || c.contains("mt6785")) return "Helio G90T"
+            if (c == "mt6769" || c.contains("mt6769")) return "Helio G80/G85"
+            if (c == "mt6765" || c.contains("mt6765")) return "Helio P35"
+            if (c == "mt6762" || c.contains("mt6762")) return "Helio P22"
+            if (c == "mt6761" || c.contains("mt6761")) return "Helio A22"
+
+            // Samsung Exynos
+            if (c == "s5e9945" || c == "exynos2400" || c.contains("exynos2400")) return "Exynos 2400"
+            if (c == "s5e9925" || c == "exynos2200" || c.contains("exynos2200")) return "Exynos 2200"
+            if (c == "s5e9830" || c == "exynos990" || c.contains("exynos990")) return "Exynos 990"
+            if (c == "s5e9820" || c == "exynos9820" || c.contains("exynos9820")) return "Exynos 9820"
+            if (c == "s5e9815" || c == "exynos2100" || c.contains("exynos2100")) return "Exynos 2100"
+            if (c == "s5e8845" || c == "exynos1480" || c.contains("exynos1480")) return "Exynos 1480"
+            if (c == "s5e8835" || c == "exynos1380" || c.contains("exynos1380")) return "Exynos 1380"
+            if (c == "s5e8825" || c == "exynos1280" || c.contains("exynos1280")) return "Exynos 1280"
+            if (c == "s5e8535" || c == "exynos1330" || c.contains("exynos1330")) return "Exynos 1330"
+
+            // Google Tensor
+            if (c == "gs101" || c.contains("gs101")) return "Google Tensor G1"
+            if (c == "gs201" || c.contains("gs201")) return "Google Tensor G2"
+            if (c == "gs301" || c.contains("gs301")) return "Google Tensor G3"
+            if (c == "gs401" || c.contains("gs401")) return "Google Tensor G4"
         }
-        return board ?: "Unknown CPU"
+
+        // 2. Fallbacks with contains check or general formatting
+        // If manufacturer or hardware is Qualcomm
+        if (mfg.contains("qualcomm") || mfg.contains("qcom") || brd.contains("qcom") || hw.contains("qcom") || mdl.startsWith("sm") || mdl.startsWith("sdm") || mdl.startsWith("msm")) {
+            if (mdl.startsWith("sm8")) {
+                return "Snapdragon 8-Series ($model)"
+            }
+            if (mdl.startsWith("sm7")) {
+                return "Snapdragon 7-Series ($model)"
+            }
+            if (mdl.startsWith("sm6")) {
+                return "Snapdragon 6-Series ($model)"
+            }
+            if (mdl.startsWith("sm4")) {
+                return "Snapdragon 4-Series ($model)"
+            }
+            return if (model != null && model != "unknown") "Snapdragon $model" else "Qualcomm Snapdragon"
+        }
+
+        if (mfg.contains("mediatek") || mfg.contains("mtk") || brd.startsWith("mt") || hw.startsWith("mt") || mdl.startsWith("mt")) {
+            return if (model != null && model != "unknown") "MediaTek $model" else "MediaTek"
+        }
+
+        if (mfg.contains("samsung") || brd.contains("exynos") || hw.contains("exynos") || mdl.contains("exynos")) {
+            return if (model != null && model != "unknown") "Exynos $model" else "Samsung Exynos"
+        }
+
+        if (mfg.contains("google") || brd.contains("tensor") || hw.contains("tensor") || mdl.startsWith("gs")) {
+            return "Google Tensor"
+        }
+
+        // 3. Return a clean formatted version of the model/hardware/manufacturer
+        val finalMfg = manufacturer?.trim() ?: ""
+        val finalMdl = model?.trim() ?: ""
+        
+        if (finalMfg.isNotEmpty() && finalMfg != "unknown") {
+            if (finalMdl.isNotEmpty() && finalMdl != "unknown") {
+                if (finalMdl.startsWith(finalMfg, ignoreCase = true)) {
+                    return finalMdl
+                }
+                return "$finalMfg $finalMdl"
+            }
+            return finalMfg
+        }
+        
+        if (finalMdl.isNotEmpty() && finalMdl != "unknown") {
+            return finalMdl
+        }
+
+        val finalHw = hardware?.trim() ?: ""
+        if (finalHw.isNotEmpty() && finalHw != "unknown") {
+            return finalHw
+        }
+
+        val finalBrd = board?.trim() ?: ""
+        if (finalBrd.isNotEmpty() && finalBrd != "unknown") {
+            return finalBrd
+        }
+
+        return "Unknown CPU"
     }
 
     fun getGpuName(): String {

@@ -150,6 +150,8 @@ fun DashboardScreen(
 ) {
     val cpuTemp by viewModel.currentCpuTemp.collectAsState()
     val gpuTemp by viewModel.currentGpuTemp.collectAsState()
+    val cpuName by viewModel.cpuName.collectAsState()
+    val gpuName by viewModel.gpuName.collectAsState()
     val overlayEnabled by viewModel.overlayEnabled.collectAsState()
     val useShizuku by viewModel.useShizuku.collectAsState()
     val useWinlatorSdk by viewModel.useWinlatorSdk.collectAsState()
@@ -266,7 +268,9 @@ fun DashboardScreen(
                         useShizuku = useShizuku,
                         onToggleOverlay = { viewModel.toggleOverlay(it) },
                         onRequestOverlayPermission = onRequestOverlayPermission,
-                        onClearHistory = { viewModel.clearHistory() }
+                        onClearHistory = { viewModel.clearHistory() },
+                        cpuName = cpuName,
+                        gpuName = gpuName
                     )
                 }
                 1 -> {
@@ -359,7 +363,9 @@ fun LiveDisplayTab(
     useShizuku: Boolean,
     onToggleOverlay: (Boolean) -> Unit,
     onRequestOverlayPermission: () -> Unit,
-    onClearHistory: () -> Unit
+    onClearHistory: () -> Unit,
+    cpuName: String = "CPU",
+    gpuName: String = "GPU"
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -438,7 +444,8 @@ fun LiveDisplayTab(
                         title = "CPU Core Temp",
                         value = cpuTemp,
                         primaryColor = Color(0xFF33B5E5), // Cold Blue
-                        maxTemp = 85f
+                        maxTemp = 85f,
+                        subtitle = cpuName
                     )
                 }
                 Box(modifier = Modifier.weight(1f)) {
@@ -446,7 +453,8 @@ fun LiveDisplayTab(
                         title = "GPU Core Temp",
                         value = gpuTemp,
                         primaryColor = Color(0xFFFF4444), // Crimson Hot
-                        maxTemp = 85f
+                        maxTemp = 85f,
+                        subtitle = gpuName
                     )
                 }
             }
@@ -564,7 +572,8 @@ fun AnimatedGaugeCard(
     title: String,
     value: Float?,
     primaryColor: Color,
-    maxTemp: Float
+    maxTemp: Float,
+    subtitle: String? = null
 ) {
     val displayVal = value ?: 0.0f
     val sweepAngle = (displayVal / maxTemp).coerceIn(0f, 1.0f) * 180f
@@ -592,6 +601,19 @@ fun AnimatedGaugeCard(
                 fontWeight = FontWeight.Bold,
                 letterSpacing = 0.5.sp
             )
+            
+            if (subtitle != null) {
+                Spacer(modifier = Modifier.height(2.dp))
+                Text(
+                    text = subtitle,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.6f),
+                    fontSize = 10.sp,
+                    fontFamily = FontFamily.Monospace,
+                    textAlign = TextAlign.Center,
+                    maxLines = 1,
+                    overflow = androidx.compose.ui.text.style.TextOverflow.Ellipsis
+                )
+            }
             
             Spacer(modifier = Modifier.height(16.dp))
             

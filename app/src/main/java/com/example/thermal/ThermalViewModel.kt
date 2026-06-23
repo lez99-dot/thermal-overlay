@@ -89,6 +89,12 @@ class ThermalViewModel(application: Application) : AndroidViewModel(application)
     private val _overlayPermissionGranted = MutableStateFlow(false)
     val overlayPermissionGranted = _overlayPermissionGranted.asStateFlow()
 
+    private val _cpuName = MutableStateFlow("CPU")
+    val cpuName = _cpuName.asStateFlow()
+
+    private val _gpuName = MutableStateFlow("GPU")
+    val gpuName = _gpuName.asStateFlow()
+
     init {
         loadAllConfig()
         checkOverlayPermission()
@@ -96,6 +102,16 @@ class ThermalViewModel(application: Application) : AndroidViewModel(application)
         checkWinlatorStatus()
         observeTelemetry()
         startDashboardPolling()
+        loadHardwareNames()
+    }
+
+    private fun loadHardwareNames() {
+        viewModelScope.launch(Dispatchers.Default) {
+            val cpu = thermalManager.getCpuName()
+            val gpu = thermalManager.getGpuName()
+            _cpuName.value = cpu
+            _gpuName.value = gpu
+        }
     }
 
     private fun loadAllConfig() {
