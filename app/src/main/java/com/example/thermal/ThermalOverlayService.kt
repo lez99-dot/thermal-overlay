@@ -38,6 +38,7 @@ import androidx.savedstate.SavedStateRegistry
 import androidx.savedstate.SavedStateRegistryOwner
 import androidx.savedstate.SavedStateRegistryController
 import com.example.MainActivity
+import com.example.R
 import com.example.data.ThermalDatabase
 import kotlinx.coroutines.*
 
@@ -64,7 +65,7 @@ class ThermalOverlayService : Service(), ViewModelStoreOwner {
         }
         
         fun start() {
-            registry.currentState = Lifecycle.State.STARTED
+            registry.currentState = Lifecycle.State.RESUMED
         }
         
         fun stop() {
@@ -100,46 +101,73 @@ class ThermalOverlayService : Service(), ViewModelStoreOwner {
 
     override fun onCreate() {
         super.onCreate()
-        thermalManager = ThermalManager(this)
-        startForegroundCompat()
-        
-        loadSettingsAndStart()
+        try {
+            thermalManager = ThermalManager(this)
+            startForegroundCompat()
+            loadSettingsAndStart()
+        } catch (e: Exception) {
+            Log.e("ThermalOverlayService", "Critical error in onCreate", e)
+            try {
+                com.example.thermal.CrashReporter.writeCrashLog(this, Thread.currentThread(), e)
+            } catch (ex: Exception) {}
+            stopSelf()
+        }
     }
 
     private fun startForegroundCompat() {
-        createNotificationChannel()
-        val notification = buildNotification()
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
-            if (Build.VERSION.SDK_INT >= 34) {
-                try {
+        try {
+            createNotificationChannel()
+            val notification = buildNotification()
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.Q) {
+                if (Build.VERSION.SDK_INT >= 34) {
+                    try {
+                        startForeground(
+                            NOTIFICATION_ID,
+                            notification,
+                            android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                        )
+                    } catch (e: Exception) {
+                        Log.e("ThermalOverlayService", "Failed to start foreground with TYPE_SPECIAL_USE, attempting fallback with TYPE_SPECIAL_USE as targetSdk 30+", e)
+                        try {
+                            startForeground(
+                                NOTIFICATION_ID,
+                                notification,
+                                android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                            )
+                        } catch (f: Exception) {
+                            Log.e("ThermalOverlayService", "Mandatory SPECIAL_USE startForeground failure on current platform", f)
+                        }
+                    }
+                } else {
                     startForeground(
                         NOTIFICATION_ID,
                         notification,
-                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
+                        android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_NONE
                     )
-                } catch (e: Exception) {
-                    Log.e("ThermalOverlayService", "Failed to start foreground with TYPE_SPECIAL_USE, attempting fallback", e)
-                    startForeground(NOTIFICATION_ID, notification)
                 }
             } else {
-                startForeground(
-                    NOTIFICATION_ID,
-                    notification,
-                    android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_NONE
-                )
+                startForeground(NOTIFICATION_ID, notification)
             }
-        } else {
-            startForeground(NOTIFICATION_ID, notification)
+        } catch (e: Exception) {
+            Log.e("ThermalOverlayService", "Failed to perform startForegroundCompat entirely", e)
         }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
-        if (intent?.action == ACTION_STOP) {
+        try {
+            if (intent?.action == ACTION_STOP) {
+                stopSelf()
+                return START_NOT_STICKY
+            }
+            if (intent?.action == ACTION_REFRESH_SETTINGS) {
+                loadSettingsAndStart()
+            }
+        } catch (e: Exception) {
+            Log.e("ThermalOverlayService", "Critical error in onStartCommand", e)
+            try {
+                com.example.thermal.CrashReporter.writeCrashLog(this, Thread.currentThread(), e)
+            } catch (ex: Exception) {}
             stopSelf()
-            return START_NOT_STICKY
-        }
-        if (intent?.action == ACTION_REFRESH_SETTINGS) {
-            loadSettingsAndStart()
         }
         return START_STICKY
     }
@@ -189,92 +217,112 @@ class ThermalOverlayService : Service(), ViewModelStoreOwner {
     }
 
     private fun setupFloatingWindow() {
-        if (!Settings.canDrawOverlays(this)) {
-            Log.e("ThermalOverlayService", "SYSTEM_ALERT_WINDOW permission is absent, stopping service.")
-            stopSelf()
-            return
-        }
-
-        if (windowManager == null) {
-            windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        }
-
         try {
-            if (overlayView != null) {
-                windowManager?.removeView(overlayView)
+            if (!Settings.canDrawOverlays(this)) {
+                Log.e("ThermalOverlayService", "SYSTEM_ALERT_WINDOW permission is absent, stopping service.")
+                stopSelf()
+                return
             }
-        } catch (e: Exception) {
-            // ignore
-        }
 
-        val layoutParams = WindowManager.LayoutParams(
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            WindowManager.LayoutParams.WRAP_CONTENT,
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
-            } else {
-                @Suppress("DEPRECATION")
-                WindowManager.LayoutParams.TYPE_PHONE
-            },
-            WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
-            PixelFormat.TRANSLUCENT
-        ).apply {
-            gravity = Gravity.TOP or Gravity.START
-            
-            val db = ThermalDatabase.getInstance(this@ThermalOverlayService)
-            serviceScope.launch {
-                val lastX = withContext(Dispatchers.IO) { db.dao().getConfig("overlay_x")?.value?.toIntOrNull() } ?: 100
-                val lastY = withContext(Dispatchers.IO) { db.dao().getConfig("overlay_y")?.value?.toIntOrNull() } ?: 200
-                x = lastX
-                y = lastY
-                try {
-                    windowManager?.updateViewLayout(overlayView, this@apply)
-                } catch (e: Exception) {}
+            if (windowManager == null) {
+                windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
             }
-        }
 
-        overlayView = FrameLayout(this)
-        
-        composeView = ComposeView(this).apply {
-            setViewTreeLifecycleOwner(lifecycleOwner)
-            setViewTreeSavedStateRegistryOwner(lifecycleOwner)
-            setViewTreeViewModelStoreOwner(this@ThermalOverlayService)
-            
-            setContent {
-                val cpuTemp by cpuTempState
-                val gpuTemp by gpuTempState
+            try {
+                if (overlayView != null) {
+                    windowManager?.removeView(overlayView)
+                }
+            } catch (e: Exception) {
+                // ignore
+            }
+
+            val layoutParams = WindowManager.LayoutParams(
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                WindowManager.LayoutParams.WRAP_CONTENT,
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                    WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY
+                } else {
+                    @Suppress("DEPRECATION")
+                    WindowManager.LayoutParams.TYPE_PHONE
+                },
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT
+            ).apply {
+                gravity = Gravity.TOP or Gravity.START
                 
-                FloatingOverlayUI(
-                    cpuTemp = cpuTemp,
-                    gpuTemp = gpuTemp,
-                    backgroundColor = parseHexColor(overlayBgHex).copy(alpha = overlayBgOpacity),
-                    cpuColor = parseHexColor(cpuHex),
-                    gpuColor = parseHexColor(gpuHex),
-                    scale = scaleFactor,
-                    onDrag = { dx, dy ->
-                        layoutParams.x = (layoutParams.x + dx).coerceAtLeast(0)
-                        layoutParams.y = (layoutParams.y + dy).coerceAtLeast(0)
-                        windowManager?.updateViewLayout(overlayView, layoutParams)
-                    },
-                    onDragEnd = {
-                        serviceScope.launch(Dispatchers.IO) {
-                            val db = ThermalDatabase.getInstance(this@ThermalOverlayService)
-                            db.dao().insertConfig(com.example.data.ThermalConfig("overlay_x", layoutParams.x.toString()))
-                            db.dao().insertConfig(com.example.data.ThermalConfig("overlay_y", layoutParams.y.toString()))
+                val db = ThermalDatabase.getInstance(this@ThermalOverlayService)
+                serviceScope.launch {
+                    val lastX = withContext(Dispatchers.IO) { db.dao().getConfig("overlay_x")?.value?.toIntOrNull() } ?: 100
+                    val lastY = withContext(Dispatchers.IO) { db.dao().getConfig("overlay_y")?.value?.toIntOrNull() } ?: 200
+                    x = lastX
+                    y = lastY
+                    try {
+                        val view = overlayView
+                        if (view != null && view.isAttachedToWindow) {
+                            windowManager?.updateViewLayout(view, this@apply)
                         }
-                    }
-                )
+                    } catch (e: Exception) {}
+                }
             }
-        }
-        
-        overlayView?.addView(composeView)
-        
-        try {
-            lifecycleOwner.start()
-            windowManager?.addView(overlayView, layoutParams)
+
+            overlayView = FrameLayout(this).apply {
+                setViewTreeLifecycleOwner(lifecycleOwner)
+                setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+                setViewTreeViewModelStoreOwner(this@ThermalOverlayService)
+            }
+            
+            composeView = ComposeView(this).apply {
+                setViewTreeLifecycleOwner(lifecycleOwner)
+                setViewTreeSavedStateRegistryOwner(lifecycleOwner)
+                setViewTreeViewModelStoreOwner(this@ThermalOverlayService)
+                
+                setContent {
+                    val cpuTemp by cpuTempState
+                    val gpuTemp by gpuTempState
+                    
+                    FloatingOverlayUI(
+                        cpuTemp = cpuTemp,
+                        gpuTemp = gpuTemp,
+                        backgroundColor = parseHexColor(overlayBgHex).copy(alpha = overlayBgOpacity),
+                        cpuColor = parseHexColor(cpuHex),
+                        gpuColor = parseHexColor(gpuHex),
+                        scale = scaleFactor,
+                        onDrag = { dx, dy ->
+                            layoutParams.x = (layoutParams.x + dx).coerceAtLeast(0)
+                            layoutParams.y = (layoutParams.y + dy).coerceAtLeast(0)
+                            try {
+                                val view = overlayView
+                                if (view != null && view.isAttachedToWindow) {
+                                    windowManager?.updateViewLayout(view, layoutParams)
+                                }
+                            } catch (e: Exception) {}
+                        },
+                        onDragEnd = {
+                            serviceScope.launch(Dispatchers.IO) {
+                                val db = ThermalDatabase.getInstance(this@ThermalOverlayService)
+                                db.dao().insertConfig(com.example.data.ThermalConfig("overlay_x", layoutParams.x.toString()))
+                                db.dao().insertConfig(com.example.data.ThermalConfig("overlay_y", layoutParams.y.toString()))
+                            }
+                        }
+                    )
+                }
+            }
+            
+            overlayView?.addView(composeView)
+            
+            try {
+                lifecycleOwner.start()
+                windowManager?.addView(overlayView, layoutParams)
+            } catch (e: Exception) {
+                e.printStackTrace()
+                Log.e("ThermalOverlayService", "Failed to add system overlay view.", e)
+            }
         } catch (e: Exception) {
-            e.printStackTrace()
-            Log.e("ThermalOverlayService", "Failed to add system overlay view.", e)
+            Log.e("ThermalOverlayService", "Critical error in setupFloatingWindow", e)
+            try {
+                com.example.thermal.CrashReporter.writeCrashLog(this, Thread.currentThread(), e)
+            } catch (ex: Exception) {}
+            stopSelf()
         }
     }
 
@@ -327,7 +375,7 @@ class ThermalOverlayService : Service(), ViewModelStoreOwner {
         return NotificationCompat.Builder(this, CHANNEL_ID)
             .setContentTitle("Thermal Monitor Active")
             .setContentText("CPU/GPU Floating Overlay is running in background")
-            .setSmallIcon(android.R.drawable.sym_def_app_icon)
+            .setSmallIcon(R.mipmap.ic_launcher)
             .setContentIntent(pendingIntent)
             .addAction(0, "STOP OVERLAY", stopPendingIntent)
             .setOngoing(true)
