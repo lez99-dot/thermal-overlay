@@ -111,14 +111,30 @@ class ThermalViewModel(application: Application) : AndroidViewModel(application)
                 _overlayGpuHex.value = db.dao().getConfig("overlay_gpu_color")?.value ?: "#FFFF4444"
                 _overlayScale.value = db.dao().getConfig("overlay_size_scale")?.value?.toFloatOrNull() ?: 1.0f
                 _overlayBgOpacity.value = db.dao().getConfig("overlay_background_opacity")?.value?.toFloatOrNull() ?: 0.72f
-                _overlayEnabled.value = db.dao().getConfig("overlay_enabled")?.value?.toBoolean() ?: false
+                
+                val savedOverlayEnabled = db.dao().getConfig("overlay_enabled")?.value?.toBoolean() ?: false
+                val updatedOverlay = if (savedOverlayEnabled && !Settings.canDrawOverlays(getApplication())) {
+                    db.dao().insertConfig(ThermalConfig("overlay_enabled", "false"))
+                    false
+                } else {
+                    savedOverlayEnabled
+                }
+                _overlayEnabled.value = updatedOverlay
             }
             refreshZones()
         }
     }
 
     fun checkOverlayPermission() {
-        _overlayPermissionGranted.value = Settings.canDrawOverlays(getApplication())
+        val granted = Settings.canDrawOverlays(getApplication())
+        _overlayPermissionGranted.value = granted
+        if (!granted && _overlayEnabled.value) {
+            _overlayEnabled.value = false
+            saveConfig("overlay_enabled", "false")
+            val context = getApplication<Application>()
+            val intent = Intent(context, ThermalOverlayService::class.java)
+            context.stopService(intent)
+        }
     }
 
     fun checkShizukuStatus() {
@@ -280,13 +296,12 @@ class ThermalViewModel(application: Application) : AndroidViewModel(application)
     }
 
     fun toggleOverlay(enabled: Boolean) {
-        _overlayEnabled.value = enabled
-        saveConfig("overlay_enabled", enabled.toString())
-        
         val context = getApplication<Application>()
         val intent = Intent(context, ThermalOverlayService::class.java)
         if (enabled) {
             if (Settings.canDrawOverlays(context)) {
+                _overlayEnabled.value = true
+                saveConfig("overlay_enabled", "true")
                 if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
                     context.startForegroundService(intent)
                 } else {
@@ -294,19 +309,29 @@ class ThermalViewModel(application: Application) : AndroidViewModel(application)
                 }
             } else {
                 _overlayEnabled.value = false
+                saveConfig("overlay_enabled", "false")
             }
         } else {
+            _overlayEnabled.value = false
+            saveConfig("overlay_enabled", "false")
             context.stopService(intent)
         }
     }
 
     private fun triggerOverlayRefresh() {
-        if (_overlayEnabled.value) {
-            val context = getApplication<Application>()
+        val context = getApplication<Application>()
+        if (_overlayEnabled.value && Settings.canDrawOverlays(context)) {
             val intent = Intent(context, ThermalOverlayService::class.java).apply {
                 action = ThermalOverlayService.ACTION_REFRESH_SETTINGS
             }
-            context.startService(intent)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
+            }
+        } else if (_overlayEnabled.value) {
+            _overlayEnabled.value = false
+            saveConfig("overlay_enabled", "false")
         }
     }
 

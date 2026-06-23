@@ -10,6 +10,7 @@ import android.content.Intent
 import android.graphics.PixelFormat
 import android.os.Build
 import android.os.IBinder
+import android.provider.Settings
 import android.util.Log
 import android.view.Gravity
 import android.view.WindowManager
@@ -117,6 +118,7 @@ class ThermalOverlayService : Service(), ViewModelStoreOwner {
                         android.content.pm.ServiceInfo.FOREGROUND_SERVICE_TYPE_SPECIAL_USE
                     )
                 } catch (e: Exception) {
+                    Log.e("ThermalOverlayService", "Failed to start foreground with TYPE_SPECIAL_USE, attempting fallback", e)
                     startForeground(NOTIFICATION_ID, notification)
                 }
             } else {
@@ -187,6 +189,12 @@ class ThermalOverlayService : Service(), ViewModelStoreOwner {
     }
 
     private fun setupFloatingWindow() {
+        if (!Settings.canDrawOverlays(this)) {
+            Log.e("ThermalOverlayService", "SYSTEM_ALERT_WINDOW permission is absent, stopping service.")
+            stopSelf()
+            return
+        }
+
         if (windowManager == null) {
             windowManager = getSystemService(Context.WINDOW_SERVICE) as WindowManager
         }
@@ -212,8 +220,17 @@ class ThermalOverlayService : Service(), ViewModelStoreOwner {
             PixelFormat.TRANSLUCENT
         ).apply {
             gravity = Gravity.TOP or Gravity.START
-            x = 100
-            y = 200
+            
+            val db = ThermalDatabase.getInstance(this@ThermalOverlayService)
+            serviceScope.launch {
+                val lastX = withContext(Dispatchers.IO) { db.dao().getConfig("overlay_x")?.value?.toIntOrNull() } ?: 100
+                val lastY = withContext(Dispatchers.IO) { db.dao().getConfig("overlay_y")?.value?.toIntOrNull() } ?: 200
+                x = lastX
+                y = lastY
+                try {
+                    windowManager?.updateViewLayout(overlayView, this@apply)
+                } catch (e: Exception) {}
+            }
         }
 
         overlayView = FrameLayout(this)
@@ -255,15 +272,6 @@ class ThermalOverlayService : Service(), ViewModelStoreOwner {
         try {
             lifecycleOwner.start()
             windowManager?.addView(overlayView, layoutParams)
-            
-            serviceScope.launch {
-                val db = ThermalDatabase.getInstance(this@ThermalOverlayService)
-                val lastX = withContext(Dispatchers.IO) { db.dao().getConfig("overlay_x")?.value?.toIntOrNull() } ?: 100
-                val lastY = withContext(Dispatchers.IO) { db.dao().getConfig("overlay_y")?.value?.toIntOrNull() } ?: 200
-                layoutParams.x = lastX
-                layoutParams.y = lastY
-                windowManager?.updateViewLayout(overlayView, layoutParams)
-            }
         } catch (e: Exception) {
             e.printStackTrace()
             Log.e("ThermalOverlayService", "Failed to add system overlay view.", e)
