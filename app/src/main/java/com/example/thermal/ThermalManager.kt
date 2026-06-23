@@ -36,6 +36,111 @@ class ThermalManager(private val context: Context) {
         }
     }
 
+    fun getCpuName(): String {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            val socModel = Build.SOC_MODEL
+            val socManufacturer = Build.SOC_MANUFACTURER
+            if (socModel != null && socModel != "unknown" && socModel.isNotEmpty()) {
+                if (socManufacturer != null && socManufacturer != "unknown" && socManufacturer.isNotEmpty()) {
+                    return "$socManufacturer $socModel"
+                }
+                return socModel
+            }
+        }
+        
+        try {
+            val cpuInfoFile = File("/proc/cpuinfo")
+            if (cpuInfoFile.exists() && cpuInfoFile.canRead()) {
+                val lines = cpuInfoFile.readLines()
+                for (line in lines) {
+                    if (line.startsWith("Hardware", ignoreCase = true)) {
+                        val parts = line.split(":")
+                        if (parts.size > 1) {
+                            val hw = parts[1].trim()
+                            if (hw.isNotEmpty() && hw != "unknown") {
+                                return hw
+                            }
+                        }
+                    }
+                }
+                for (line in lines) {
+                    if (line.startsWith("model name", ignoreCase = true) || line.startsWith("Processor", ignoreCase = true)) {
+                        val parts = line.split(":")
+                        if (parts.size > 1) {
+                            val proc = parts[1].trim()
+                            if (proc.isNotEmpty() && proc != "unknown" && !proc.contains("Processor")) {
+                                return proc
+                            }
+                        }
+                    }
+                }
+            }
+        } catch (e: Exception) {
+            Log.e("ThermalManager", "Failed to parse /proc/cpuinfo for CPU name", e)
+        }
+        
+        val board = Build.BOARD
+        val hardware = Build.HARDWARE
+        if (hardware != null && hardware != "unknown" && hardware.isNotEmpty()) {
+            return hardware
+        }
+        return board ?: "Unknown CPU"
+    }
+
+    fun getGpuName(): String {
+        try {
+            val egl = javax.microedition.khronos.egl.EGLContext.getEGL() as javax.microedition.khronos.egl.EGL10
+            val display = egl.eglGetDisplay(javax.microedition.khronos.egl.EGL10.EGL_DEFAULT_DISPLAY)
+            if (display != javax.microedition.khronos.egl.EGL10.EGL_NO_DISPLAY) {
+                val version = IntArray(2)
+                if (egl.eglInitialize(display, version)) {
+                    val attribList = intArrayOf(
+                        javax.microedition.khronos.egl.EGL10.EGL_RED_SIZE, 8,
+                        javax.microedition.khronos.egl.EGL10.EGL_GREEN_SIZE, 8,
+                        javax.microedition.khronos.egl.EGL10.EGL_BLUE_SIZE, 8,
+                        javax.microedition.khronos.egl.EGL10.EGL_NONE
+                    )
+                    val configs = arrayOfNulls<javax.microedition.khronos.egl.EGLConfig>(1)
+                    val numConfigs = IntArray(1)
+                    if (egl.eglChooseConfig(display, attribList, configs, 1, numConfigs) && numConfigs[0] > 0) {
+                        val config = configs[0]
+                        val contextAttribs = intArrayOf(0x3098, 2, javax.microedition.khronos.egl.EGL10.EGL_NONE) // EGL_CONTEXT_CLIENT_VERSION = 2
+                        val context = egl.eglCreateContext(display, config, javax.microedition.khronos.egl.EGL10.EGL_NO_CONTEXT, contextAttribs)
+                        if (context != javax.microedition.khronos.egl.EGL10.EGL_NO_CONTEXT) {
+                            val pbufferAttribs = intArrayOf(
+                                javax.microedition.khronos.egl.EGL10.EGL_WIDTH, 1,
+                                javax.microedition.khronos.egl.EGL10.EGL_HEIGHT, 1,
+                                javax.microedition.khronos.egl.EGL10.EGL_NONE
+                            )
+                            val surface = egl.eglCreatePbufferSurface(display, config, pbufferAttribs)
+                            if (surface != javax.microedition.khronos.egl.EGL10.EGL_NO_SURFACE) {
+                                egl.eglMakeCurrent(display, surface, surface, context)
+                                val renderer = android.opengl.GLES20.glGetString(android.opengl.GLES20.GL_RENDERER)
+                                egl.eglMakeCurrent(display, javax.microedition.khronos.egl.EGL10.EGL_NO_SURFACE, javax.microedition.khronos.egl.EGL10.EGL_NO_SURFACE, javax.microedition.khronos.egl.EGL10.EGL_NO_CONTEXT)
+                                egl.eglDestroySurface(display, surface)
+                                egl.eglDestroyContext(display, context)
+                                egl.eglTerminate(display)
+                                if (!renderer.isNullOrBlank()) {
+                                    return renderer.trim()
+                                }
+                            } else {
+                                egl.eglDestroyContext(display, context)
+                                egl.eglTerminate(display)
+                            }
+                        } else {
+                            egl.eglTerminate(display)
+                        }
+                    } else {
+                        egl.eglTerminate(display)
+                    }
+                }
+            }
+        } catch (e: java.lang.Exception) {
+            Log.e("ThermalManager", "Failed to retrieve GPU name via EGL", e)
+        }
+        return "Unknown GPU"
+    }
+
     fun getThermalZonesDirectly(): List<ThermalZoneInfo> {
         val list = mutableListOf<ThermalZoneInfo>()
         try {

@@ -28,6 +28,7 @@ import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.ComposeView
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.app.NotificationCompat
@@ -89,6 +90,8 @@ class ThermalOverlayService : Service(), ViewModelStoreOwner {
 
     private val cpuTempState = mutableStateOf<Float?>(null)
     private val gpuTempState = mutableStateOf<Float?>(null)
+    private val cpuNameState = mutableStateOf("CPU")
+    private val gpuNameState = mutableStateOf("GPU")
 
     private lateinit var thermalManager: ThermalManager
 
@@ -103,6 +106,14 @@ class ThermalOverlayService : Service(), ViewModelStoreOwner {
         super.onCreate()
         try {
             thermalManager = ThermalManager(this)
+            serviceScope.launch(Dispatchers.Default) {
+                val cpuName = thermalManager.getCpuName()
+                val gpuName = thermalManager.getGpuName()
+                withContext(Dispatchers.Main) {
+                    cpuNameState.value = cpuName
+                    gpuNameState.value = gpuName
+                }
+            }
             startForegroundCompat()
             loadSettingsAndStart()
         } catch (e: Exception) {
@@ -279,10 +290,14 @@ class ThermalOverlayService : Service(), ViewModelStoreOwner {
                 setContent {
                     val cpuTemp by cpuTempState
                     val gpuTemp by gpuTempState
+                    val cpuName by cpuNameState
+                    val gpuName by gpuNameState
                     
                     FloatingOverlayUI(
                         cpuTemp = cpuTemp,
                         gpuTemp = gpuTemp,
+                        cpuName = cpuName,
+                        gpuName = gpuName,
                         backgroundColor = parseHexColor(overlayBgHex).copy(alpha = overlayBgOpacity),
                         cpuColor = parseHexColor(cpuHex),
                         gpuColor = parseHexColor(gpuHex),
@@ -387,6 +402,8 @@ class ThermalOverlayService : Service(), ViewModelStoreOwner {
 fun FloatingOverlayUI(
     cpuTemp: Float?,
     gpuTemp: Float?,
+    cpuName: String,
+    gpuName: String,
     backgroundColor: Color,
     cpuColor: Color,
     gpuColor: Color,
@@ -417,7 +434,7 @@ fun FloatingOverlayUI(
                 )
             }
             .padding(4.dp)
-            .width((140 * scale).dp)
+            .width((152 * scale).dp)
             .background(backgroundColor, RoundedCornerShape(12.dp))
             .padding(vertical = 6.dp, horizontal = 10.dp)
     ) {
@@ -439,13 +456,24 @@ fun FloatingOverlayUI(
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "CPU",
-                    color = Color.White.copy(alpha = 0.8f),
-                    fontSize = (11 * scale).sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "CPU",
+                        color = Color.White.copy(alpha = 0.8f),
+                        fontSize = (11 * scale).sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Text(
+                        text = cpuName,
+                        color = Color.White.copy(alpha = 0.5f),
+                        fontSize = (8 * scale).sp,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(modifier = Modifier.width((4 * scale).dp))
                 Text(
                     text = cpuTemp?.let { String.format("%.1f°C", it) } ?: "--.-°C",
                     color = cpuColor,
@@ -455,20 +483,31 @@ fun FloatingOverlayUI(
                 )
             }
 
-            Spacer(modifier = Modifier.height(3.dp))
+            Spacer(modifier = Modifier.height(4.dp))
 
             Row(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.SpaceBetween,
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Text(
-                    text = "GPU",
-                    color = Color.White.copy(alpha = 0.8f),
-                    fontSize = (11 * scale).sp,
-                    fontWeight = FontWeight.Bold,
-                    fontFamily = FontFamily.Monospace
-                )
+                Column(modifier = Modifier.weight(1f)) {
+                    Text(
+                        text = "GPU",
+                        color = Color.White.copy(alpha = 0.8f),
+                        fontSize = (11 * scale).sp,
+                        fontWeight = FontWeight.Bold,
+                        fontFamily = FontFamily.Monospace
+                    )
+                    Text(
+                        text = gpuName,
+                        color = Color.White.copy(alpha = 0.5f),
+                        fontSize = (8 * scale).sp,
+                        fontFamily = FontFamily.Monospace,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis
+                    )
+                }
+                Spacer(modifier = Modifier.width((4 * scale).dp))
                 Text(
                     text = gpuTemp?.let { String.format("%.1f°C", it) } ?: "--.-°C",
                     color = gpuColor,
