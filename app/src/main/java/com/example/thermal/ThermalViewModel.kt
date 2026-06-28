@@ -95,6 +95,15 @@ class ThermalViewModel(application: Application) : AndroidViewModel(application)
     private val _gpuName = MutableStateFlow("GPU")
     val gpuName = _gpuName.asStateFlow()
 
+    private val _showUsagePercentage = MutableStateFlow(false)
+    val showUsagePercentage = _showUsagePercentage.asStateFlow()
+
+    private val _currentCpuUsage = MutableStateFlow<Float?>(null)
+    val currentCpuUsage = _currentCpuUsage.asStateFlow()
+
+    private val _currentGpuUsage = MutableStateFlow<Float?>(null)
+    val currentGpuUsage = _currentGpuUsage.asStateFlow()
+
     init {
         loadAllConfig()
         checkOverlayPermission()
@@ -127,6 +136,7 @@ class ThermalViewModel(application: Application) : AndroidViewModel(application)
                 _overlayGpuHex.value = db.dao().getConfig("overlay_gpu_color")?.value ?: "#FFFF4444"
                 _overlayScale.value = db.dao().getConfig("overlay_size_scale")?.value?.toFloatOrNull() ?: 1.0f
                 _overlayBgOpacity.value = db.dao().getConfig("overlay_background_opacity")?.value?.toFloatOrNull() ?: 0.72f
+                _showUsagePercentage.value = db.dao().getConfig("show_usage_percentage")?.value?.toBoolean() ?: false
                 
                 val savedOverlayEnabled = db.dao().getConfig("overlay_enabled")?.value?.toBoolean() ?: false
                 val updatedOverlay = if (savedOverlayEnabled && !Settings.canDrawOverlays(getApplication())) {
@@ -240,6 +250,20 @@ class ThermalViewModel(application: Application) : AndroidViewModel(application)
                 _currentCpuTemp.value = cpu
                 _currentGpuTemp.value = gpu
                 
+                if (_showUsagePercentage.value) {
+                    val cpuUsage = withContext(Dispatchers.IO) {
+                        thermalManager.getCpuUsage(_useShizuku.value, _useWinlatorSdk.value)
+                    }
+                    val gpuUsage = withContext(Dispatchers.IO) {
+                        thermalManager.getGpuUsage(_useShizuku.value, _useWinlatorSdk.value)
+                    }
+                    _currentCpuUsage.value = cpuUsage
+                    _currentGpuUsage.value = gpuUsage
+                } else {
+                    _currentCpuUsage.value = null
+                    _currentGpuUsage.value = null
+                }
+                
                 if (!_overlayEnabled.value && cpu != null && gpu != null) {
                     withContext(Dispatchers.IO) {
                         thermalManager.recordTelemetry(cpu, gpu)
@@ -308,6 +332,12 @@ class ThermalViewModel(application: Application) : AndroidViewModel(application)
         saveConfig("overlay_background_color", bg)
         saveConfig("overlay_cpu_color", cpu)
         saveConfig("overlay_gpu_color", gpu)
+        triggerOverlayRefresh()
+    }
+
+    fun setShowUsagePercentage(enabled: Boolean) {
+        _showUsagePercentage.value = enabled
+        saveConfig("show_usage_percentage", enabled.toString())
         triggerOverlayRefresh()
     }
 

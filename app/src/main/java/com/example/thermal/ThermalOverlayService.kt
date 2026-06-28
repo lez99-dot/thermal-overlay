@@ -87,9 +87,12 @@ class ThermalOverlayService : Service(), ViewModelStoreOwner {
     private var gpuHex = "#FFFF4444"
     private var scaleFactor = 1.0f
     private var overlayBgOpacity = 0.72f
+    private var showUsagePercentage = false
 
     private val cpuTempState = mutableStateOf<Float?>(null)
     private val gpuTempState = mutableStateOf<Float?>(null)
+    private val cpuUsageState = mutableStateOf<Float?>(null)
+    private val gpuUsageState = mutableStateOf<Float?>(null)
     private val cpuNameState = mutableStateOf("CPU")
     private val gpuNameState = mutableStateOf("GPU")
 
@@ -197,6 +200,7 @@ class ThermalOverlayService : Service(), ViewModelStoreOwner {
                 gpuHex = db.dao().getConfig("overlay_gpu_color")?.value ?: "#FFFF4444"
                 scaleFactor = db.dao().getConfig("overlay_size_scale")?.value?.toFloatOrNull() ?: 1.0f
                 overlayBgOpacity = db.dao().getConfig("overlay_background_opacity")?.value?.toFloatOrNull() ?: 0.72f
+                showUsagePercentage = db.dao().getConfig("show_usage_percentage")?.value?.toBoolean() ?: false
             }
             
             setupFloatingWindow()
@@ -215,6 +219,20 @@ class ThermalOverlayService : Service(), ViewModelStoreOwner {
                 
                 cpuTempState.value = cpu
                 gpuTempState.value = gpu
+                
+                if (showUsagePercentage) {
+                    val cpuUsage = withContext(Dispatchers.IO) {
+                        thermalManager.getCpuUsage(useShizuku, useWinlatorSdk)
+                    }
+                    val gpuUsage = withContext(Dispatchers.IO) {
+                        thermalManager.getGpuUsage(useShizuku, useWinlatorSdk)
+                    }
+                    cpuUsageState.value = cpuUsage
+                    gpuUsageState.value = gpuUsage
+                } else {
+                    cpuUsageState.value = null
+                    gpuUsageState.value = null
+                }
                 
                 if (cpu != null && gpu != null) {
                     withContext(Dispatchers.IO) {
@@ -290,6 +308,8 @@ class ThermalOverlayService : Service(), ViewModelStoreOwner {
                 setContent {
                     val cpuTemp by cpuTempState
                     val gpuTemp by gpuTempState
+                    val cpuUsage by cpuUsageState
+                    val gpuUsage by gpuUsageState
                     val cpuName by cpuNameState
                     val gpuName by gpuNameState
                     
@@ -302,6 +322,8 @@ class ThermalOverlayService : Service(), ViewModelStoreOwner {
                         cpuColor = parseHexColor(cpuHex),
                         gpuColor = parseHexColor(gpuHex),
                         scale = scaleFactor,
+                        cpuUsage = cpuUsage,
+                        gpuUsage = gpuUsage,
                         onDrag = { dx, dy ->
                             layoutParams.x = (layoutParams.x + dx).coerceAtLeast(0)
                             layoutParams.y = (layoutParams.y + dy).coerceAtLeast(0)
@@ -408,6 +430,8 @@ fun FloatingOverlayUI(
     cpuColor: Color,
     gpuColor: Color,
     scale: Float,
+    cpuUsage: Float? = null,
+    gpuUsage: Float? = null,
     onDrag: (Int, Int) -> Unit,
     onDragEnd: () -> Unit
 ) {
@@ -434,7 +458,7 @@ fun FloatingOverlayUI(
                 )
             }
             .padding(4.dp)
-            .width((152 * scale).dp)
+            .width((if (cpuUsage != null) 168 * scale else 152 * scale).dp)
             .background(backgroundColor, RoundedCornerShape(12.dp))
             .padding(vertical = 6.dp, horizontal = 10.dp)
     ) {
@@ -475,7 +499,12 @@ fun FloatingOverlayUI(
                 }
                 Spacer(modifier = Modifier.width((4 * scale).dp))
                 Text(
-                    text = cpuTemp?.let { String.format("%.1f°C", it) } ?: "--.-°C",
+                    text = buildString {
+                        if (cpuUsage != null) {
+                            append(String.format("%d%% ", cpuUsage.toInt()))
+                        }
+                        append(cpuTemp?.let { String.format("%.1f°C", it) } ?: "--.-°C")
+                    },
                     color = cpuColor,
                     fontSize = (12 * scale).sp,
                     fontWeight = FontWeight.Black,
@@ -509,7 +538,12 @@ fun FloatingOverlayUI(
                 }
                 Spacer(modifier = Modifier.width((4 * scale).dp))
                 Text(
-                    text = gpuTemp?.let { String.format("%.1f°C", it) } ?: "--.-°C",
+                    text = buildString {
+                        if (gpuUsage != null) {
+                            append(String.format("%d%% ", gpuUsage.toInt()))
+                        }
+                        append(gpuTemp?.let { String.format("%.1f°C", it) } ?: "--.-°C")
+                    },
                     color = gpuColor,
                     fontSize = (12 * scale).sp,
                     fontWeight = FontWeight.Black,

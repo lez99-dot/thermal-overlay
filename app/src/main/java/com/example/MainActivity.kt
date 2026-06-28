@@ -170,6 +170,9 @@ fun DashboardScreen(
     val zoneList by viewModel.zoneList.collectAsState()
     val cpuZone by viewModel.cpuZone.collectAsState()
     val gpuZone by viewModel.gpuZone.collectAsState()
+    val showUsagePercentage by viewModel.showUsagePercentage.collectAsState()
+    val cpuUsage by viewModel.currentCpuUsage.collectAsState()
+    val gpuUsage by viewModel.currentGpuUsage.collectAsState()
 
     var activeTab by remember { mutableStateOf(0) } // 0: Live, 1: Preferences, 2: Diagnostics
 
@@ -270,7 +273,9 @@ fun DashboardScreen(
                         onRequestOverlayPermission = onRequestOverlayPermission,
                         onClearHistory = { viewModel.clearHistory() },
                         cpuName = cpuName,
-                        gpuName = gpuName
+                        gpuName = gpuName,
+                        cpuUsage = cpuUsage,
+                        gpuUsage = gpuUsage
                     )
                 }
                 1 -> {
@@ -293,7 +298,8 @@ fun DashboardScreen(
                         onRequestWinlatorPermission = onRequestWinlatorPermission,
                         zoneList = zoneList,
                         cpuZone = cpuZone,
-                        gpuZone = gpuZone
+                        gpuZone = gpuZone,
+                        showUsagePercentage = showUsagePercentage
                     )
                 }
                 2 -> {
@@ -365,7 +371,9 @@ fun LiveDisplayTab(
     onRequestOverlayPermission: () -> Unit,
     onClearHistory: () -> Unit,
     cpuName: String = "CPU",
-    gpuName: String = "GPU"
+    gpuName: String = "GPU",
+    cpuUsage: Float? = null,
+    gpuUsage: Float? = null
 ) {
     LazyColumn(
         modifier = Modifier.fillMaxSize(),
@@ -445,7 +453,8 @@ fun LiveDisplayTab(
                         value = cpuTemp,
                         primaryColor = Color(0xFF33B5E5), // Cold Blue
                         maxTemp = 85f,
-                        subtitle = cpuName
+                        subtitle = cpuName,
+                        usage = cpuUsage
                     )
                 }
                 Box(modifier = Modifier.weight(1f)) {
@@ -454,7 +463,8 @@ fun LiveDisplayTab(
                         value = gpuTemp,
                         primaryColor = Color(0xFFFF4444), // Crimson Hot
                         maxTemp = 85f,
-                        subtitle = gpuName
+                        subtitle = gpuName,
+                        usage = gpuUsage
                     )
                 }
             }
@@ -573,7 +583,8 @@ fun AnimatedGaugeCard(
     value: Float?,
     primaryColor: Color,
     maxTemp: Float,
-    subtitle: String? = null
+    subtitle: String? = null,
+    usage: Float? = null
 ) {
     val displayVal = value ?: 0.0f
     val sweepAngle = (displayVal / maxTemp).coerceIn(0f, 1.0f) * 180f
@@ -645,12 +656,12 @@ fun AnimatedGaugeCard(
 
                 Column(
                     horizontalAlignment = Alignment.CenterHorizontally,
-                    modifier = Modifier.offset(y = 12.dp)
+                    modifier = Modifier.offset(y = if (usage != null) 4.dp else 12.dp)
                 ) {
                     Text(
                         text = value?.let { String.format("%.1f°", it) } ?: "--.-°",
                         color = MaterialTheme.colorScheme.onSurface,
-                        fontSize = 20.sp,
+                        fontSize = if (usage != null) 18.sp else 20.sp,
                         fontWeight = FontWeight.SemiBold,
                         fontFamily = FontFamily.Monospace
                     )
@@ -661,6 +672,16 @@ fun AnimatedGaugeCard(
                         fontWeight = FontWeight.Black,
                         letterSpacing = 0.5.sp
                     )
+                    if (usage != null) {
+                        Spacer(modifier = Modifier.height(2.dp))
+                        Text(
+                            text = String.format("%d%% Load", usage.toInt()),
+                            color = MaterialTheme.colorScheme.onSurfaceVariant.copy(alpha = 0.8f),
+                            fontSize = 10.sp,
+                            fontWeight = FontWeight.Bold,
+                            fontFamily = FontFamily.Monospace
+                        )
+                    }
                 }
             }
         }
@@ -785,7 +806,8 @@ fun PreferencesTab(
     onRequestWinlatorPermission: () -> Unit,
     zoneList: List<ThermalZoneInfo>,
     cpuZone: String,
-    gpuZone: String
+    gpuZone: String,
+    showUsagePercentage: Boolean
 ) {
     var showColorMenu by remember { mutableStateOf(false) }
 
@@ -1003,6 +1025,49 @@ fun PreferencesTab(
                             }
                         }
                     }
+                }
+            }
+        }
+
+        // CPU/GPU Usage Toggle configuration
+        item {
+            Card(
+                colors = CardDefaults.cardColors(containerColor = MaterialTheme.colorScheme.surface),
+                shape = RoundedCornerShape(24.dp),
+                border = BorderStroke(1.dp, Color.White.copy(alpha = 0.05f)),
+                modifier = Modifier.fillMaxWidth()
+            ) {
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .padding(20.dp),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically
+                ) {
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = "CPU & GPU Usage Display",
+                            color = MaterialTheme.colorScheme.onSurface,
+                            fontSize = 16.sp,
+                            fontWeight = FontWeight.Bold
+                        )
+                        Text(
+                            text = "Toggle displaying active processor load percentage in dashboard and floating overlay",
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            fontSize = 12.sp
+                        )
+                    }
+                    
+                    Switch(
+                        checked = showUsagePercentage,
+                        onCheckedChange = { viewModel.setShowUsagePercentage(it) },
+                        colors = SwitchDefaults.colors(
+                            checkedThumbColor = MaterialTheme.colorScheme.onPrimary,
+                            checkedTrackColor = MaterialTheme.colorScheme.primary,
+                            uncheckedThumbColor = MaterialTheme.colorScheme.onSurfaceVariant,
+                            uncheckedTrackColor = MaterialTheme.colorScheme.secondary
+                        )
+                    )
                 }
             }
         }
